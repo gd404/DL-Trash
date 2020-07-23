@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 from keras.models import Model
-from keras.layers import Dense, LSTM, Input
+from keras.layers import Dense, LSTM, Input, Activation, concatenate, dot, TimeDistributed, Lambda
 from keras.optimizers import Adam
 from keras.layers.embeddings import Embedding
 from keras.losses import categorical_crossentropy
@@ -118,22 +118,24 @@ y = df['French']
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1)
 
 
+
+
 #defining the encoder training model
-hidden_dims = 64
+hidden_dims = 200
 encoder_input = Input(shape = (None,))
-enc_embed_layer = Embedding(num_encoder_tokens+1, hidden_dims, mask_zero = True)
+enc_embed_layer = Embedding(num_encoder_tokens, hidden_dims, mask_zero = True)
 enc_embeds = enc_embed_layer(encoder_input)
 enc_lstm = LSTM(hidden_dims, return_state = True)
 encoder_outputs, state_h, state_c = enc_lstm(enc_embeds)
 encoder_states = [state_h, state_c]
 
 #defining decoder training model
-hidden_dims = 64
+hidden_dims = 200
 decoder_input = Input(shape = (None,))
 dec_embed_layer = Embedding(num_decoder_tokens, hidden_dims, mask_zero = True)
 dec_embeds = dec_embed_layer(decoder_input)
 dec_lstm = LSTM(hidden_dims, return_sequences = True, return_state = True)
-decoder_outputs, _, _ = dec_lstm(dec_embeds, initial_state=encoder_states)
+decoder_outputs, h, c = dec_lstm(dec_embeds, initial_state = encoder_states)
 decoder_dense = Dense(num_decoder_tokens, activation = 'softmax')
 decoder_outputs = decoder_dense(decoder_outputs)
 
@@ -149,6 +151,35 @@ model.fit_generator(generator = generate_batch(X_train, y_train, batch_size = ba
                                                                                 batch_size = batch_size),
                                                validation_steps = len(X_test)//batch_size)
 
+#defining decoder training model
+# hidden_dims = 200
+# decoder_input = Input(shape = (max_fr_sent_length,))
+# dec_embed_layer = Embedding(num_decoder_tokens, hidden_dims, input_length = max_fr_sent_length, mask_zero = True)
+# dec_embeds = dec_embed_layer(decoder_input)
+# dec_lstm = LSTM(hidden_dims, return_sequences = True, return_state = True)
+# decoder_outputs, h, c = dec_lstm(dec_embeds)
+
+########TRYIIIIIINNNNGGGGGGG..........................................................
+# hidden_dims = 200
+# decoder_input = Input(shape = (max_fr_sent_length,))
+# dec_embed_layer = Embedding(num_decoder_tokens, hidden_dims, input_length = max_fr_sent_length, mask_zero = True)
+# dec_embeds = dec_embed_layer(decoder_input)
+# dec_lstm = LSTM(hidden_dims, return_sequences = True, return_state = True)
+# decoder_outputs, h, c = dec_lstm(dec_embeds)
+
+
+# wa_dot_hs = Dense(hidden_dims, use_bias = False)(encoder_outputs)
+# h_t = Lambda(lambda x: x[:, -1, :], output_shape=(hidden_dims,))(decoder_outputs)
+
+# attention = dot([wa_dot_hs, h_t], axes = (2,1))
+# attention = Activation('softmax')(attention)
+
+# context = dot([attention, encoder_outputs], axes = (1,1))
+# pre_activation = concatenate([context, h_t])
+# outputs = Dense(len(fr_vocab), use_bias = False, activation = 'tanh')(pre_activation)
+# outputs = Dense(len(fr_vocab), use_bias = False, activation = 'softmax')(outputs)
+
+
 
 model.save_weights('nmt_weights.h5')
 
@@ -157,64 +188,55 @@ model.load_weights('nmt_weights.h5')
 
 
 #defining decoder inference model
-encoder_model = Model(encoder_input, encoder_states)
+# encoder_model = Model(encoder_input, encoder_states)
 
-decoder_state_h = Input(shape = (hidden_dims,))
-decoder_state_c = Input(shape = (hidden_dims,))
-decoder_state_inputs = [decoder_state_h, decoder_state_c]
-decoder_embed = dec_embed_layer(decoder_input)
-decoder_outputs2, state_h2, state_c2 = dec_lstm(decoder_embed, initial_state = decoder_state_inputs)
-decoder_states2 = [state_h2, state_c2]
-decoder_outputs2 = decoder_dense(decoder_outputs2)
+# decoder_state_h = Input(shape = (hidden_dims,))
+# decoder_state_c = Input(shape = (hidden_dims,))
+# decoder_state_inputs = [decoder_state_h, decoder_state_c]
+# decoder_embed = dec_embed_layer(decoder_input)
+# decoder_outputs2, state_h2, state_c2 = dec_lstm(decoder_embed, initial_state = decoder_state_inputs)
+# decoder_states2 = [state_h2, state_c2]
+# decoder_outputs2 = decoder_dense(decoder_outputs2)
 
-decoder_model = Model([decoder_input] + decoder_state_inputs, [decoder_outputs2] + decoder_states2)
+# decoder_model = Model([decoder_input] + decoder_state_inputs, [decoder_outputs2] + decoder_states2)
 
-print(type(decoder_input))
-print(type(decoder_state_inputs))
-print(type(decoder_outputs2))
-print(type(decoder_states2))
 
-def decode_seq(input_seq):
-    state_vector = encoder_model.predict(input_seq)
-    target_seq = np.zeros((1,1))
-    target_seq[0, 0] = fr_word_to_token['<START>']
-    print(type(target_seq))
-    print(type(state_vector))
-    stop_condition = False
-    decoded_sentence = ''
-    while not stop_condition:
-        output_tokens, h, c = decoder_model.predict([target_seq] + state_vector)
-        #It's for excluding the END clause
-        decoded_output = np.argmax(output_tokens[0, -1, :])
-        decoded_word = fr_token_to_word[decoded_output]
-        if decoded_word != '<END>':
-            decoded_sentence += ' ' + decoded_word
+# def decode_seq(input_seq):
+#     state_vector = encoder_model.predict(input_seq)
+#     target_seq = np.zeros((1,1))
+#     target_seq[0, 0] = fr_word_to_token['<START>']
+#     print(type(target_seq))
+#     print(type(state_vector))
+#     stop_condition = False
+#     decoded_sentence = ''
+#     while not stop_condition:
+#         output_tokens, h, c = decoder_model.predict([target_seq] + state_vector)
+#         #It's for excluding the END clause
+#         decoded_output = np.argmax(output_tokens[0, -1, :])
+#         decoded_word = fr_token_to_word[decoded_output]
+#         if decoded_word != '<END>':
+#             decoded_sentence += ' ' + decoded_word
         
-        if decoded_word == '<END>':
-            stop_condition = True
+#         if decoded_word == '<END>':
+#             stop_condition = True
         
-        target_seq = np.zeros((1, 1))
-        target_seq[0, 0] =  decoded_output
+#         target_seq = np.zeros((1, 1))
+#         target_seq[0, 0] =  decoded_output
         
-        state_vector = [h, c]
-    return decoded_sentence
+#         state_vector = [h, c]
+#     return decoded_sentence
     
-data_gen = generate_batch(X_train, y_train, batch_size = 1)
-(input_data, actual_output), _ = next(data_gen)
+# data_gen = generate_batch(X_train, y_train, batch_size = 1)
+# (input_data, actual_output), _ = next(data_gen)
 
-result = decode_seq(input_data)
+# result = decode_seq(input_data)
 
-print('Input Sentence: ', X_train[1])
-print('Output Sentence: ', y_train[1])
-print('Predicted Sentence', result)
+# print('Input Sentence: ', X_train[1])
+# print('Output Sentence: ', y_train[1])
+# print('Predicted Sentence', result)
 
-                      
-
-
-    
-    
-    
-    
+                     
+xx = np.random.randint(1, 10, (2,3,3))
     
     
     
